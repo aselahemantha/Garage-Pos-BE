@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"garage-pos-be/internal/auth"
+	"garage-pos-be/internal/billing"
 	"garage-pos-be/internal/catalog"
 	"garage-pos-be/internal/customer"
 	"garage-pos-be/internal/inventory"
@@ -28,6 +29,7 @@ type RouterParams struct {
 	SettingsHandler  *settings.Handler
 	InventoryHandler *inventory.Handler
 	JobHandler       *job.Handler
+	BillingHandler   *billing.Handler
 	JWTSecret        string
 }
 
@@ -104,4 +106,19 @@ func RegisterRoutes(p RouterParams) {
 	settingsGroup := protected.Group("/settings")
 	settingsGroup.GET("", p.SettingsHandler.GetAll)
 	settingsGroup.PUT("", p.SettingsHandler.UpdateAll, RequireRoles("owner"))
+
+	// 8. Billing & Invoices routes
+	invGroup := protected.Group("/invoices")
+	invGroup.GET("", p.BillingHandler.ListInvoices)
+	invGroup.POST("", p.BillingHandler.IssueInvoice, RequireRoles("owner", "advisor"))
+	invGroup.GET("/:id", p.BillingHandler.GetInvoice)
+	invGroup.POST("/:id/payments", p.BillingHandler.RecordPayment, RequireRoles("owner", "advisor"))
+	invGroup.POST("/:id/void", p.BillingHandler.VoidInvoice, RequireRoles("owner"))
+
+	// 9. Cash Sessions routes
+	cashGroup := protected.Group("/cash-sessions")
+	cashGroup.GET("", p.BillingHandler.ListCashSessions)
+	cashGroup.GET("/active", p.BillingHandler.GetActiveCashSession)
+	cashGroup.POST("", p.BillingHandler.OpenCashSession, RequireRoles("owner", "advisor"))
+	cashGroup.POST("/:id/close", p.BillingHandler.CloseCashSession, RequireRoles("owner", "advisor"))
 }

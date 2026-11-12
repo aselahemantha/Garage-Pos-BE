@@ -8,6 +8,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type CashSession struct {
+	ID             int64              `json:"id"`
+	SessionNo      string             `json:"session_no"`
+	UserID         int64              `json:"user_id"`
+	OpenedAt       pgtype.Timestamptz `json:"opened_at"`
+	ClosedAt       pgtype.Timestamptz `json:"closed_at"`
+	OpeningFloat   int64              `json:"opening_float"`
+	ClosingCounted pgtype.Int8        `json:"closing_counted"`
+	ExpectedCash   int64              `json:"expected_cash"`
+	Difference     pgtype.Int8        `json:"difference"`
+	Status         string             `json:"status"`
+	Notes          pgtype.Text        `json:"notes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Customer struct {
 	ID        int64              `json:"id"`
 	Name      string             `json:"name"`
@@ -18,6 +34,48 @@ type Customer struct {
 	IsActive  bool               `json:"is_active"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Invoice struct {
+	ID            int64              `json:"id"`
+	InvoiceNo     string             `json:"invoice_no"`
+	JobCardID     pgtype.Int8        `json:"job_card_id"`
+	CustomerID    int64              `json:"customer_id"`
+	VehicleID     pgtype.Int8        `json:"vehicle_id"`
+	CashSessionID pgtype.Int8        `json:"cash_session_id"`
+	Status        string             `json:"status"`
+	Subtotal      int64              `json:"subtotal"`
+	DiscountTotal int64              `json:"discount_total"`
+	TaxBps        int32              `json:"tax_bps"`
+	TaxTotal      int64              `json:"tax_total"`
+	Total         int64              `json:"total"`
+	PaidTotal     int64              `json:"paid_total"`
+	Balance       int64              `json:"balance"`
+	IssuedAt      pgtype.Timestamptz `json:"issued_at"`
+	DueAt         pgtype.Timestamptz `json:"due_at"`
+	PaidAt        pgtype.Timestamptz `json:"paid_at"`
+	VoidedAt      pgtype.Timestamptz `json:"voided_at"`
+	VoidReason    pgtype.Text        `json:"void_reason"`
+	VoidedBy      pgtype.Int8        `json:"voided_by"`
+	Notes         pgtype.Text        `json:"notes"`
+	CreatedBy     int64              `json:"created_by"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type InvoiceItem struct {
+	ID           int64              `json:"id"`
+	InvoiceID    int64              `json:"invoice_id"`
+	ItemType     string             `json:"item_type"`
+	ServiceID    pgtype.Int8        `json:"service_id"`
+	PartID       pgtype.Int8        `json:"part_id"`
+	Description  string             `json:"description"`
+	Qty          pgtype.Numeric     `json:"qty"`
+	UnitPrice    int64              `json:"unit_price"`
+	Discount     int64              `json:"discount"`
+	LineTotal    int64              `json:"line_total"`
+	MechanicName pgtype.Text        `json:"mechanic_name"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type JobCard struct {
@@ -66,6 +124,20 @@ type Part struct {
 	IsActive     bool               `json:"is_active"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Payment struct {
+	ID            int64              `json:"id"`
+	InvoiceID     int64              `json:"invoice_id"`
+	CashSessionID pgtype.Int8        `json:"cash_session_id"`
+	PaymentMethod string             `json:"payment_method"`
+	Amount        int64              `json:"amount"`
+	Tendered      pgtype.Int8        `json:"tendered"`
+	ChangeGiven   int64              `json:"change_given"`
+	ReferenceNo   pgtype.Text        `json:"reference_no"`
+	Notes         pgtype.Text        `json:"notes"`
+	CreatedBy     int64              `json:"created_by"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
 type RefreshToken struct {
