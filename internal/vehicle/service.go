@@ -215,7 +215,7 @@ func (s *Service) GetHistory(ctx context.Context, id int64) (*VehicleHistoryResp
 	}
 	defer jobRows.Close()
 
-	var jobs []VehicleHistoryJob
+	jobs := make([]VehicleHistoryJob, 0)
 	var jobIDs []int64
 
 	for jobRows.Next() {
@@ -287,7 +287,7 @@ func (s *Service) GetHistory(ctx context.Context, id int64) (*VehicleHistoryResp
 	}
 	defer invRows.Close()
 
-	var invoices []VehicleHistoryInvoice
+	invoices := make([]VehicleHistoryInvoice, 0)
 	for invRows.Next() {
 		var inv VehicleHistoryInvoice
 		var issuedAtPg pgtype.Timestamptz
