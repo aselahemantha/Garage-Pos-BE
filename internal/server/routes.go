@@ -12,6 +12,7 @@ import (
 	"garage-pos-be/internal/inventory"
 	"garage-pos-be/internal/job"
 	"garage-pos-be/internal/pkg/response"
+	"garage-pos-be/internal/report"
 	"garage-pos-be/internal/settings"
 	"garage-pos-be/internal/vehicle"
 
@@ -30,6 +31,7 @@ type RouterParams struct {
 	InventoryHandler *inventory.Handler
 	JobHandler       *job.Handler
 	BillingHandler   *billing.Handler
+	ReportHandler    *report.Handler
 	JWTSecret        string
 }
 
@@ -121,4 +123,13 @@ func RegisterRoutes(p RouterParams) {
 	cashGroup.GET("/active", p.BillingHandler.GetActiveCashSession)
 	cashGroup.POST("", p.BillingHandler.OpenCashSession, RequireRoles("owner", "advisor"))
 	cashGroup.POST("/:id/close", p.BillingHandler.CloseCashSession, RequireRoles("owner", "advisor"))
+
+	// 10. Reports & Analytics routes (owner, advisor)
+	reportsGroup := protected.Group("/reports")
+	reportsGroup.Use(RequireRoles("owner", "advisor"))
+	reportsGroup.GET("/summary", p.ReportHandler.GetSummary)
+	reportsGroup.GET("/revenue-trend", p.ReportHandler.GetRevenueTrend)
+	reportsGroup.GET("/payment-methods", p.ReportHandler.GetPaymentMethods)
+	reportsGroup.GET("/top-items", p.ReportHandler.GetTopItems)
+	reportsGroup.GET("/end-of-day", p.ReportHandler.GetEndOfDayReport)
 }

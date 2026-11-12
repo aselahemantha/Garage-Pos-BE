@@ -19,6 +19,7 @@ import (
 	"garage-pos-be/internal/inventory"
 	"garage-pos-be/internal/job"
 	"garage-pos-be/internal/pkg/response"
+	"garage-pos-be/internal/report"
 	"garage-pos-be/internal/server"
 	"garage-pos-be/internal/settings"
 	"garage-pos-be/internal/store"
@@ -107,6 +108,7 @@ func main() {
 
 	// Handlers
 	billingService := billing.NewService(queries, pool)
+	reportService := report.NewService(queries, pool)
 
 	authHandler := auth.NewHandler(authService, v, cfg.AppEnv == "production")
 	vehicleHandler := vehicle.NewHandler(vehicleService, v)
@@ -115,6 +117,7 @@ func main() {
 	inventoryHandler := inventory.NewHandler(inventoryService, v)
 	jobHandler := job.NewHandler(jobService, v)
 	billingHandler := billing.NewHandler(billingService, v)
+	reportHandler := report.NewHandler(reportService)
 	settingsHandler := settings.NewHandler(settingsService)
 
 	// 4. Initialize HTTP server
@@ -147,6 +150,7 @@ func main() {
 		InventoryHandler: inventoryHandler,
 		JobHandler:       jobHandler,
 		BillingHandler:   billingHandler,
+		ReportHandler:    reportHandler,
 		SettingsHandler:  settingsHandler,
 		JWTSecret:        cfg.JWTSecret,
 	})
