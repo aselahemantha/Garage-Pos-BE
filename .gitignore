@@ -1,0 +1,41 @@
+# Binaries and build outputs
+/bin/
+/api
+main
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Test coverage and profiles
+*.coverprofile
+coverage.txt
+profile.out
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# IDEs & editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker data volumes (if mounted locally)
+pgdata/
+postgres_data/
