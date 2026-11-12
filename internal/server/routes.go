@@ -14,6 +14,7 @@ import (
 	"garage-pos-be/internal/pkg/response"
 	"garage-pos-be/internal/report"
 	"garage-pos-be/internal/settings"
+	"garage-pos-be/internal/user"
 	"garage-pos-be/internal/vehicle"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -32,6 +33,7 @@ type RouterParams struct {
 	JobHandler       *job.Handler
 	BillingHandler   *billing.Handler
 	ReportHandler    *report.Handler
+	UserHandler      *user.Handler
 	JWTSecret        string
 }
 
@@ -135,4 +137,12 @@ func RegisterRoutes(p RouterParams) {
 	reportsGroup.GET("/payment-methods", p.ReportHandler.GetPaymentMethods)
 	reportsGroup.GET("/top-items", p.ReportHandler.GetTopItems)
 	reportsGroup.GET("/end-of-day", p.ReportHandler.GetEndOfDayReport)
+
+	// 11. Staff & User Management routes
+	usersGroup := protected.Group("/users")
+	usersGroup.GET("", p.UserHandler.List, RequireRoles("owner", "advisor"))
+	usersGroup.GET("/:id", p.UserHandler.GetByID, RequireRoles("owner", "advisor"))
+	usersGroup.POST("", p.UserHandler.Create, RequireRoles("owner"))
+	usersGroup.PATCH("/:id", p.UserHandler.Update, RequireRoles("owner"))
+	usersGroup.POST("/:id/password", p.UserHandler.ChangePassword, RequireRoles("owner"))
 }

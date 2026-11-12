@@ -23,6 +23,7 @@ import (
 	"garage-pos-be/internal/server"
 	"garage-pos-be/internal/settings"
 	"garage-pos-be/internal/store"
+	"garage-pos-be/internal/user"
 	"garage-pos-be/internal/vehicle"
 
 	"github.com/go-playground/validator/v10"
@@ -109,6 +110,7 @@ func main() {
 	// Handlers
 	billingService := billing.NewService(queries, pool)
 	reportService := report.NewService(queries, pool)
+	userService := user.NewService(queries, pool)
 
 	authHandler := auth.NewHandler(authService, v, cfg.AppEnv == "production")
 	vehicleHandler := vehicle.NewHandler(vehicleService, v)
@@ -119,6 +121,7 @@ func main() {
 	billingHandler := billing.NewHandler(billingService, v)
 	reportHandler := report.NewHandler(reportService)
 	settingsHandler := settings.NewHandler(settingsService)
+	userHandler := user.NewHandler(userService, v)
 
 	// 4. Initialize HTTP server
 	e := echo.New()
@@ -152,6 +155,7 @@ func main() {
 		BillingHandler:   billingHandler,
 		ReportHandler:    reportHandler,
 		SettingsHandler:  settingsHandler,
+		UserHandler:      userHandler,
 		JWTSecret:        cfg.JWTSecret,
 	})
 
