@@ -79,6 +79,7 @@ func RegisterRoutes(p RouterParams) {
 	vehGroup := protected.Group("/vehicles")
 	vehGroup.GET("", p.VehicleHandler.Search)
 	vehGroup.GET("/:id", p.VehicleHandler.GetByID)
+	vehGroup.GET("/:id/history", p.VehicleHandler.GetHistory)
 	vehGroup.POST("", p.VehicleHandler.Create, RequireRoles("owner", "advisor"))
 	vehGroup.PATCH("/:id", p.VehicleHandler.Update, RequireRoles("owner", "advisor"))
 

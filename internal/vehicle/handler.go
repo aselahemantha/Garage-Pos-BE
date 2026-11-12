@@ -61,6 +61,23 @@ func (h *Handler) GetByID(c echo.Context) error {
 	return response.JSONSuccess(c, http.StatusOK, v)
 }
 
+func (h *Handler) GetHistory(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid vehicle ID", nil)
+	}
+
+	hist, err := h.service.GetHistory(c.Request().Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrVehicleNotFound) {
+			return response.JSONError(c, http.StatusNotFound, "not_found", "Vehicle not found", nil)
+		}
+		return response.JSONError(c, http.StatusInternalServerError, "internal_error", "Failed to get vehicle history", nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, hist)
+}
+
 func (h *Handler) Search(c echo.Context) error {
 	query := c.QueryParam("q")
 	plate := c.QueryParam("plate")
