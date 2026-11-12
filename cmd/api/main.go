@@ -12,10 +12,14 @@ import (
 
 	"garage-pos-be/db/migrations"
 	"garage-pos-be/internal/auth"
+	"garage-pos-be/internal/catalog"
 	"garage-pos-be/internal/config"
+	"garage-pos-be/internal/customer"
 	"garage-pos-be/internal/pkg/response"
 	"garage-pos-be/internal/server"
+	"garage-pos-be/internal/settings"
 	"garage-pos-be/internal/store"
+	"garage-pos-be/internal/vehicle"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -73,14 +77,31 @@ func main() {
 
 	// 3. Initialize queries & services
 	queries := store.New(pool)
-	authService := auth.NewService(queries, pool, cfg)
+	v := validator.New()
 
-	// Seed initial owner account
+	authService := auth.NewService(queries, pool, cfg)
+	vehicleService := vehicle.NewService(queries, pool)
+	customerService := customer.NewService(queries, pool, vehicleService)
+	catalogService := catalog.NewService(queries, pool)
+	settingsService := settings.NewService(queries, pool)
+
+	// Seed initial owner account and catalog defaults
 	if err := authService.SeedOwner(ctx); err != nil {
 		slog.Warn("failed to seed initial owner", "error", err)
 	} else {
 		slog.Info("initial owner seed checked", "username", cfg.SeedOwnerUsername)
 	}
+
+	if err := catalogService.SeedDefaults(ctx); err != nil {
+		slog.Warn("failed to seed default catalog", "error", err)
+	}
+
+	// Handlers
+	authHandler := auth.NewHandler(authService, v, cfg.AppEnv == "production")
+	vehicleHandler := vehicle.NewHandler(vehicleService, v)
+	customerHandler := customer.NewHandler(customerService, v)
+	catalogHandler := catalog.NewHandler(catalogService, v)
+	settingsHandler := settings.NewHandler(settingsService)
 
 	// 4. Initialize HTTP server
 	e := echo.New()
@@ -102,14 +123,15 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	v := validator.New()
-	authHandler := auth.NewHandler(authService, v, cfg.AppEnv == "production")
-
 	server.RegisterRoutes(server.RouterParams{
-		Echo:        e,
-		Pool:        pool,
-		AuthHandler: authHandler,
-		JWTSecret:   cfg.JWTSecret,
+		Echo:            e,
+		Pool:            pool,
+		AuthHandler:     authHandler,
+		CustomerHandler: customerHandler,
+		VehicleHandler:  vehicleHandler,
+		CatalogHandler:  catalogHandler,
+		SettingsHandler: settingsHandler,
+		JWTSecret:       cfg.JWTSecret,
 	})
 
 	// 5. Graceful shutdown

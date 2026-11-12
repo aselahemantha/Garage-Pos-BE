@@ -6,17 +6,25 @@ import (
 	"time"
 
 	"garage-pos-be/internal/auth"
+	"garage-pos-be/internal/catalog"
+	"garage-pos-be/internal/customer"
 	"garage-pos-be/internal/pkg/response"
+	"garage-pos-be/internal/settings"
+	"garage-pos-be/internal/vehicle"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 )
 
 type RouterParams struct {
-	Echo        *echo.Echo
-	Pool        *pgxpool.Pool
-	AuthHandler *auth.Handler
-	JWTSecret   string
+	Echo            *echo.Echo
+	Pool            *pgxpool.Pool
+	AuthHandler     *auth.Handler
+	CustomerHandler *customer.Handler
+	VehicleHandler  *vehicle.Handler
+	CatalogHandler  *catalog.Handler
+	SettingsHandler *settings.Handler
+	JWTSecret       string
 }
 
 func RegisterRoutes(p RouterParams) {
@@ -38,10 +46,44 @@ func RegisterRoutes(p RouterParams) {
 	// API v1 group
 	v1 := p.Echo.Group("/api/v1")
 
-	// Auth routes
+	// 1. Auth routes (public)
 	authGroup := v1.Group("/auth")
 	authGroup.POST("/login", p.AuthHandler.Login)
 	authGroup.POST("/refresh", p.AuthHandler.Refresh)
 	authGroup.POST("/logout", p.AuthHandler.Logout)
 	authGroup.GET("/me", p.AuthHandler.Me, AuthMiddleware(p.JWTSecret))
+
+	// Protected API group
+	protected := v1.Group("")
+	protected.Use(AuthMiddleware(p.JWTSecret))
+
+	// 2. Customers routes (owner, advisor)
+	custGroup := protected.Group("/customers")
+	custGroup.Use(RequireRoles("owner", "advisor"))
+	custGroup.GET("", p.CustomerHandler.Search)
+	custGroup.POST("", p.CustomerHandler.Create)
+	custGroup.GET("/:id", p.CustomerHandler.GetByID)
+	custGroup.PATCH("/:id", p.CustomerHandler.Update)
+
+	// 3. Vehicles routes (owner, advisor, mechanic for read)
+	vehGroup := protected.Group("/vehicles")
+	vehGroup.GET("", p.VehicleHandler.Search)
+	vehGroup.GET("/:id", p.VehicleHandler.GetByID)
+	vehGroup.POST("", p.VehicleHandler.Create, RequireRoles("owner", "advisor"))
+	vehGroup.PATCH("/:id", p.VehicleHandler.Update, RequireRoles("owner", "advisor"))
+
+	// 4. Catalog routes
+	catGroup := protected.Group("/service-categories")
+	catGroup.GET("", p.CatalogHandler.ListCategories)
+	catGroup.POST("", p.CatalogHandler.CreateCategory, RequireRoles("owner"))
+
+	svcGroup := protected.Group("/services")
+	svcGroup.GET("", p.CatalogHandler.ListServices)
+	svcGroup.POST("", p.CatalogHandler.CreateService, RequireRoles("owner"))
+	svcGroup.PATCH("/:id", p.CatalogHandler.UpdateService, RequireRoles("owner"))
+
+	// 5. Settings routes
+	settingsGroup := protected.Group("/settings")
+	settingsGroup.GET("", p.SettingsHandler.GetAll)
+	settingsGroup.PUT("", p.SettingsHandler.UpdateAll, RequireRoles("owner"))
 }
