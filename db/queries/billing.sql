@@ -72,9 +72,10 @@ JOIN customers c ON c.id = i.customer_id
 LEFT JOIN vehicles v ON v.id = i.vehicle_id
 LEFT JOIN job_cards jc ON jc.id = i.job_card_id
 WHERE 
-    ($1::TEXT IS NULL OR i.status = $1)
+    ($1::TEXT IS NULL OR $1::TEXT = '' OR i.status = $1)
     AND (
         $2::TEXT IS NULL 
+        OR $2::TEXT = ''
         OR i.invoice_no ILIKE '%' || $2 || '%'
         OR c.name ILIKE '%' || $2 || '%'
         OR c.phone ILIKE '%' || $2 || '%'
@@ -88,9 +89,10 @@ SELECT COUNT(*) FROM invoices i
 JOIN customers c ON c.id = i.customer_id
 LEFT JOIN vehicles v ON v.id = i.vehicle_id
 WHERE 
-    ($1::TEXT IS NULL OR i.status = $1)
+    ($1::TEXT IS NULL OR $1::TEXT = '' OR i.status = $1)
     AND (
         $2::TEXT IS NULL 
+        OR $2::TEXT = ''
         OR i.invoice_no ILIKE '%' || $2 || '%'
         OR c.name ILIKE '%' || $2 || '%'
         OR c.phone ILIKE '%' || $2 || '%'

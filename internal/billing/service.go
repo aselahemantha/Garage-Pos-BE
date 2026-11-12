@@ -66,10 +66,11 @@ func (s *Service) IssueInvoice(ctx context.Context, userID int64, req IssueInvoi
 			return nil, fmt.Errorf("get job card: %w", err)
 		}
 
-		// Check if active invoice already exists for this job
+		// If active invoice already exists for this job, return it idempotently
 		existingInv, err := qtx.GetInvoiceByJobCardID(ctx, pgtype.Int8{Int64: *jobCardID, Valid: true})
 		if err == nil && existingInv.ID > 0 {
-			return nil, ErrInvoiceAlreadyIssued
+			tx.Rollback(ctx)
+			return s.GetInvoice(ctx, existingInv.ID)
 		}
 
 		customerID = jc.CustomerID
