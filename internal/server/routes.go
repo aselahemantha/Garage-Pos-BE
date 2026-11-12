@@ -125,6 +125,7 @@ func RegisterRoutes(p RouterParams) {
 	invGroup.POST("", p.BillingHandler.IssueInvoice, RequireRoles("owner", "advisor"))
 	invGroup.GET("/:id", p.BillingHandler.GetInvoice)
 	invGroup.POST("/:id/payments", p.BillingHandler.RecordPayment, RequireRoles("owner", "advisor"))
+	invGroup.POST("/:id/discount", p.BillingHandler.ApplyDiscount, RequireRoles("owner", "advisor"))
 	invGroup.POST("/:id/void", p.BillingHandler.VoidInvoice, RequireRoles("owner"))
 
 	// 9. Cash Sessions routes

@@ -33,6 +33,12 @@ type VoidInvoiceRequest struct {
 	Reason string `json:"reason"`
 }
 
+type ApplyDiscountRequest struct {
+	DiscountAmount  *int64   `json:"discount_amount,omitempty"`
+	DiscountPercent *float64 `json:"discount_percent,omitempty"`
+	Reason          *string  `json:"reason,omitempty"`
+}
+
 type OpenCashSessionRequest struct {
 	OpeningFloat int64   `json:"opening_float"`
 	Notes        *string `json:"notes,omitempty"`

@@ -156,13 +156,18 @@ func (s *Service) IssueInvoice(ctx context.Context, userID int64, req IssueInvoi
 		if lineTot < 0 {
 			lineTot = 0
 		}
-		subtotal += lineTot
+		subtotal += rawLine
 		discountTotal += it.Discount
 
 		calcLines = append(calcLines, calculatedLine{
 			input:     it,
 			lineTotal: lineTot,
 		})
+	}
+
+	netSubtotal := subtotal - discountTotal
+	if netSubtotal < 0 {
+		netSubtotal = 0
 	}
 
 	// Determine Tax Bps
@@ -180,9 +185,9 @@ func (s *Service) IssueInvoice(ctx context.Context, userID int64, req IssueInvoi
 
 	taxTotal := int64(0)
 	if taxBps > 0 {
-		taxTotal = (subtotal*int64(taxBps) + 5000) / 10000
+		taxTotal = (netSubtotal*int64(taxBps) + 5000) / 10000
 	}
-	total := subtotal + taxTotal
+	total := netSubtotal + taxTotal
 	balance := total
 
 	// 4. Generate Invoice No
@@ -252,9 +257,14 @@ func (s *Service) IssueInvoice(ctx context.Context, userID int64, req IssueInvoi
 
 		qtyNumeric, _ := floatToNumeric(cl.input.Qty)
 
+		itemType := cl.input.ItemType
+		if itemType == "service" {
+			itemType = "labor"
+		}
+
 		_, err := qtx.CreateInvoiceItem(ctx, store.CreateInvoiceItemParams{
 			InvoiceID:    createdInv.ID,
-			ItemType:     cl.input.ItemType,
+			ItemType:     itemType,
 			ServiceID:    sID,
 			PartID:       pID,
 			Description:  cl.input.Description,
@@ -414,6 +424,100 @@ func (s *Service) VoidInvoice(ctx context.Context, userID int64, userRole string
 	})
 	if err != nil {
 		return nil, fmt.Errorf("void invoice: %w", err)
+	}
+
+	return s.GetInvoice(ctx, invoiceID)
+}
+
+func (s *Service) ApplyDiscount(ctx context.Context, userID int64, userRole string, invoiceID int64, req ApplyDiscountRequest) (*InvoiceDetailResponse, error) {
+	if userRole != "owner" && userRole != "advisor" {
+		return nil, ErrUnauthorizedRole
+	}
+
+	inv, err := s.queries.GetInvoiceByID(ctx, invoiceID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrInvoiceNotFound
+		}
+		return nil, err
+	}
+
+	if inv.Status == "void" {
+		return nil, errors.New("cannot apply discount to a void invoice")
+	}
+	if inv.Status == "paid" && inv.Balance <= 0 {
+		return nil, errors.New("cannot apply discount to an already settled invoice")
+	}
+
+	var newDiscountTotal int64 = 0
+	if req.DiscountAmount != nil {
+		if *req.DiscountAmount < 0 {
+			return nil, errors.New("discount amount cannot be negative")
+		}
+		newDiscountTotal = *req.DiscountAmount
+	} else if req.DiscountPercent != nil {
+		if *req.DiscountPercent < 0 || *req.DiscountPercent > 100 {
+			return nil, errors.New("discount percentage must be between 0 and 100")
+		}
+		newDiscountTotal = int64(math.Round(float64(inv.Subtotal) * (*req.DiscountPercent) / 100.0))
+	} else {
+		return nil, errors.New("discount amount or percentage is required")
+	}
+
+	if newDiscountTotal > inv.Subtotal {
+		return nil, errors.New("discount cannot exceed invoice subtotal")
+	}
+
+	netSubtotal := inv.Subtotal - newDiscountTotal
+	if netSubtotal < 0 {
+		netSubtotal = 0
+	}
+
+	taxTotal := int64(0)
+	if inv.TaxBps > 0 {
+		taxTotal = (netSubtotal*int64(inv.TaxBps) + 5000) / 10000
+	}
+	newTotal := netSubtotal + taxTotal
+	newBalance := newTotal - inv.PaidTotal
+	newStatus := inv.Status
+
+	var paidAtPg pgtype.Timestamptz
+	if newBalance <= 0 {
+		newBalance = 0
+		newStatus = "paid"
+		paidAtPg = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	} else if inv.PaidTotal > 0 {
+		newStatus = "partially_paid"
+	} else {
+		newStatus = "issued"
+	}
+
+	var notesPg pgtype.Text
+	if req.Reason != nil && strings.TrimSpace(*req.Reason) != "" {
+		reasonNote := "Discount applied: " + strings.TrimSpace(*req.Reason)
+		if inv.Notes.Valid && inv.Notes.String != "" {
+			notesPg = pgtype.Text{String: inv.Notes.String + " | " + reasonNote, Valid: true}
+		} else {
+			notesPg = pgtype.Text{String: reasonNote, Valid: true}
+		}
+	} else {
+		notesPg = inv.Notes
+	}
+
+	_, err = s.pool.Exec(ctx, `
+		UPDATE invoices
+		SET discount_total = $1,
+		    tax_total = $2,
+		    total = $3,
+		    balance = $4,
+		    status = $5,
+		    paid_at = CASE WHEN $6::timestamptz IS NOT NULL THEN $6::timestamptz ELSE paid_at END,
+		    notes = $7,
+		    updated_at = NOW()
+		WHERE id = $8
+	`, newDiscountTotal, taxTotal, newTotal, newBalance, newStatus, paidAtPg, notesPg, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("update invoice discount: %w", err)
 	}
 
 	return s.GetInvoice(ctx, invoiceID)

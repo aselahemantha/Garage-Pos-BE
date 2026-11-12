@@ -159,6 +159,39 @@ func (h *Handler) VoidInvoice(c echo.Context) error {
 	return response.JSONSuccess(c, http.StatusOK, detail)
 }
 
+func (h *Handler) ApplyDiscount(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid invoice ID", nil)
+	}
+
+	var req ApplyDiscountRequest
+	if err := c.Bind(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_request", "Invalid request body", nil)
+	}
+
+	claims, _ := c.Get("user").(*auth.JWTClaims)
+	var userID int64 = 1
+	userRole := "owner"
+	if claims != nil {
+		userID = claims.UserID
+		userRole = claims.Role
+	}
+
+	detail, err := h.service.ApplyDiscount(c.Request().Context(), userID, userRole, id, req)
+	if err != nil {
+		if errors.Is(err, ErrUnauthorizedRole) {
+			return response.JSONError(c, http.StatusForbidden, "unauthorized", err.Error(), nil)
+		}
+		if errors.Is(err, ErrInvoiceNotFound) {
+			return response.JSONError(c, http.StatusNotFound, "not_found", "Invoice not found", nil)
+		}
+		return response.JSONError(c, http.StatusBadRequest, "apply_discount_failed", err.Error(), nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, detail)
+}
+
 // Cash Session Endpoints
 
 func (h *Handler) GetActiveCashSession(c echo.Context) error {
