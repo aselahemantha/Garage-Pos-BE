@@ -102,3 +102,79 @@ func (h *Handler) UpdateStatus(c echo.Context) error {
 
 	return response.JSONSuccess(c, http.StatusOK, updated)
 }
+
+func (h *Handler) AddItem(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid job card ID", nil)
+	}
+
+	var req CreateJobItemInput
+	if err := c.Bind(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_request", "Invalid request body", nil)
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "validation_failed", err.Error(), nil)
+	}
+
+	detail, err := h.service.AddItem(c.Request().Context(), id, req)
+	if err != nil {
+		if errors.Is(err, ErrJobNotFound) {
+			return response.JSONError(c, http.StatusNotFound, "not_found", "Job card not found", nil)
+		}
+		if errors.Is(err, ErrJobAlreadyCompleted) {
+			return response.JSONError(c, http.StatusConflict, "job_already_completed", err.Error(), nil)
+		}
+		return response.JSONError(c, http.StatusBadRequest, "add_item_failed", err.Error(), nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusCreated, detail)
+}
+
+func (h *Handler) RemoveItem(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid job card ID", nil)
+	}
+
+	itemID, err := strconv.ParseInt(c.Param("itemId"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_item_id", "Invalid item ID", nil)
+	}
+
+	detail, err := h.service.RemoveItem(c.Request().Context(), id, itemID)
+	if err != nil {
+		if errors.Is(err, ErrJobNotFound) {
+			return response.JSONError(c, http.StatusNotFound, "not_found", "Job card not found", nil)
+		}
+		if errors.Is(err, ErrJobAlreadyCompleted) {
+			return response.JSONError(c, http.StatusConflict, "job_already_completed", err.Error(), nil)
+		}
+		return response.JSONError(c, http.StatusBadRequest, "remove_item_failed", err.Error(), nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, detail)
+}
+
+func (h *Handler) UpdateJob(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid job card ID", nil)
+	}
+
+	var req UpdateJobCardRequest
+	if err := c.Bind(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_request", "Invalid request body", nil)
+	}
+
+	detail, err := h.service.UpdateJob(c.Request().Context(), id, req)
+	if err != nil {
+		if errors.Is(err, ErrJobNotFound) {
+			return response.JSONError(c, http.StatusNotFound, "not_found", "Job card not found", nil)
+		}
+		return response.JSONError(c, http.StatusBadRequest, "update_failed", err.Error(), nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, detail)
+}

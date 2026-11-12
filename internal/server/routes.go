@@ -102,7 +102,10 @@ func RegisterRoutes(p RouterParams) {
 	jobsGroup.GET("/board", p.JobHandler.ListBoard)
 	jobsGroup.POST("", p.JobHandler.Create, RequireRoles("owner", "advisor"))
 	jobsGroup.GET("/:id", p.JobHandler.GetByID)
+	jobsGroup.PATCH("/:id", p.JobHandler.UpdateJob, RequireRoles("owner", "advisor"))
 	jobsGroup.POST("/:id/status", p.JobHandler.UpdateStatus)
+	jobsGroup.POST("/:id/items", p.JobHandler.AddItem)
+	jobsGroup.DELETE("/:id/items/:itemId", p.JobHandler.RemoveItem)
 
 	// 7. Settings routes
 	settingsGroup := protected.Group("/settings")

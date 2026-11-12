@@ -74,3 +74,10 @@ type CreateJobCardRequest struct {
 type UpdateJobStatusRequest struct {
 	Status string `json:"status" validate:"required,oneof=pending in_progress completed delivered cancelled"`
 }
+
+type UpdateJobCardRequest struct {
+	MileageIn  *int32  `json:"mileage_in,omitempty"`
+	Complaint  *string `json:"complaint,omitempty"`
+	Notes      *string `json:"notes,omitempty"`
+	PromisedBy *string `json:"promised_by,omitempty"`
+}

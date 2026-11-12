@@ -374,3 +374,166 @@ func (s *Service) UpdateStatus(ctx context.Context, id int64, newStatus string) 
 
 	return s.GetByID(ctx, id)
 }
+
+func (s *Service) AddItem(ctx context.Context, jobID int64, input CreateJobItemInput) (*JobDetailResponse, error) {
+	card, err := s.queries.GetJobCardByID(ctx, jobID)
+	if err != nil {
+		return nil, ErrJobNotFound
+	}
+	if card.Status == "completed" || card.Status == "delivered" || card.Status == "cancelled" {
+		return nil, ErrJobAlreadyCompleted
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	qtyNumeric, _ := floatToNumeric(input.Qty)
+	rawTotal := int64(math.Round(float64(input.UnitPrice) * input.Qty))
+	lineTotal := rawTotal - input.Discount
+	if lineTotal < 0 {
+		lineTotal = 0
+	}
+
+	var serviceID pgtype.Int8
+	if input.ServiceID != nil {
+		serviceID = pgtype.Int8{Int64: *input.ServiceID, Valid: true}
+	}
+	var partID pgtype.Int8
+	if input.PartID != nil {
+		partID = pgtype.Int8{Int64: *input.PartID, Valid: true}
+	}
+	var mechanicID pgtype.Int8
+	if input.MechanicID != nil {
+		mechanicID = pgtype.Int8{Int64: *input.MechanicID, Valid: true}
+	}
+
+	createdItem, err := qtx.CreateJobItem(ctx, store.CreateJobItemParams{
+		JobCardID:   jobID,
+		ItemType:    input.ItemType,
+		ServiceID:   serviceID,
+		PartID:      partID,
+		Description: input.Description,
+		Qty:         qtyNumeric,
+		UnitPrice:   input.UnitPrice,
+		Discount:    input.Discount,
+		LineTotal:   lineTotal,
+		MechanicID:  mechanicID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create job item: %w", err)
+	}
+
+	if input.ItemType == "part" && input.PartID != nil {
+		negQty, _ := floatToNumeric(-input.Qty)
+		_, err = qtx.AddStockMovement(ctx, store.AddStockMovementParams{
+			PartID:   *input.PartID,
+			Qty:      negQty,
+			Type:     "job_use",
+			RefType:  pgtype.Text{String: "job_item", Valid: true},
+			RefID:    pgtype.Int8{Int64: createdItem.ID, Valid: true},
+			UnitCost: pgtype.Int8{Int64: input.UnitPrice, Valid: true},
+			Note:     pgtype.Text{String: fmt.Sprintf("Added to Job %s", card.JobNo), Valid: true},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("record stock deduction: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, jobID)
+}
+
+func (s *Service) RemoveItem(ctx context.Context, jobID int64, itemID int64) (*JobDetailResponse, error) {
+	card, err := s.queries.GetJobCardByID(ctx, jobID)
+	if err != nil {
+		return nil, ErrJobNotFound
+	}
+	if card.Status == "completed" || card.Status == "delivered" || card.Status == "cancelled" {
+		return nil, ErrJobAlreadyCompleted
+	}
+
+	item, err := s.queries.GetJobItemByID(ctx, itemID)
+	if err != nil {
+		return nil, errors.New("item not found")
+	}
+	if item.JobCardID != jobID {
+		return nil, errors.New("item does not belong to this job card")
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	if item.ItemType == "part" && item.PartID.Valid {
+		_, _ = qtx.AddStockMovement(ctx, store.AddStockMovementParams{
+			PartID:  item.PartID.Int64,
+			Qty:     item.Qty,
+			Type:    "job_return",
+			RefType: pgtype.Text{String: "job_item", Valid: true},
+			RefID:   pgtype.Int8{Int64: item.ID, Valid: true},
+			Note:    pgtype.Text{String: fmt.Sprintf("Removed from Job %s", card.JobNo), Valid: true},
+		})
+	}
+
+	if err := qtx.DeleteJobItem(ctx, itemID); err != nil {
+		return nil, fmt.Errorf("delete job item: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, jobID)
+}
+
+func (s *Service) UpdateJob(ctx context.Context, jobID int64, req UpdateJobCardRequest) (*JobDetailResponse, error) {
+	var mileageParam pgtype.Int4
+	if req.MileageIn != nil {
+		mileageParam = pgtype.Int4{Int32: *req.MileageIn, Valid: true}
+	}
+	var complaintParam pgtype.Text
+	if req.Complaint != nil {
+		complaintParam = pgtype.Text{String: *req.Complaint, Valid: true}
+	}
+	var notesParam pgtype.Text
+	if req.Notes != nil {
+		notesParam = pgtype.Text{String: *req.Notes, Valid: true}
+	}
+	var promisedParam pgtype.Timestamptz
+	if req.PromisedBy != nil && *req.PromisedBy != "" {
+		if t, err := time.Parse(time.RFC3339, *req.PromisedBy); err == nil {
+			promisedParam = pgtype.Timestamptz{Time: t, Valid: true}
+		}
+	}
+
+	_, err := s.queries.UpdateJobCard(ctx, store.UpdateJobCardParams{
+		ID:         jobID,
+		MileageIn:  mileageParam,
+		Complaint:  complaintParam,
+		Notes:      notesParam,
+		PromisedBy: promisedParam,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update job card: %w", err)
+	}
+
+	return s.GetByID(ctx, jobID)
+}
+
+func floatToNumeric(f float64) (pgtype.Numeric, error) {
+	var n pgtype.Numeric
+	err := n.Scan(fmt.Sprintf("%.3f", f))
+	return n, err
+}
