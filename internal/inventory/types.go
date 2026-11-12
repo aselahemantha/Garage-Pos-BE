@@ -43,6 +43,38 @@ type StockInRequest struct {
 	Note     *string `json:"note,omitempty"`
 }
 
+type AdjustStockRequest struct {
+	NewStockOnHand float64 `json:"new_stock_on_hand" validate:"gte=0"`
+	Reason         string  `json:"reason" validate:"required,min=3"`
+}
+
+type BatchReorderItem struct {
+	PartID   int64   `json:"part_id" validate:"required"`
+	Qty      float64 `json:"qty" validate:"gt=0"`
+	UnitCost int64   `json:"unit_cost" validate:"gte=0"`
+	Note     *string `json:"note,omitempty"`
+}
+
+type BatchReorderRequest struct {
+	Items        []BatchReorderItem `json:"items" validate:"required,min=1,dive"`
+	SupplierName *string            `json:"supplier_name,omitempty"`
+	InvoiceRef   *string            `json:"invoice_ref,omitempty"`
+}
+
+type LowStockItem struct {
+	Part                PartResponse `json:"part"`
+	Deficit             float64      `json:"deficit"`
+	SuggestedReorderQty float64      `json:"suggested_reorder_qty"`
+	EstimatedCost       int64        `json:"estimated_cost"`
+}
+
+type LowStockSummaryResponse struct {
+	LowStockCount      int            `json:"low_stock_count"`
+	OutOfStockCount    int            `json:"out_of_stock_count"`
+	TotalEstimatedCost int64          `json:"total_estimated_cost"`
+	Items              []LowStockItem `json:"items"`
+}
+
 type StockMovementResponse struct {
 	ID        int64     `json:"id"`
 	PartID    int64     `json:"part_id"`

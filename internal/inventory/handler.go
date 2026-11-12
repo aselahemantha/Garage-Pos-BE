@@ -114,3 +114,92 @@ func (h *Handler) StockIn(c echo.Context) error {
 
 	return response.JSONSuccess(c, http.StatusOK, map[string]string{"message": "Stock added successfully"})
 }
+
+func (h *Handler) Update(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid part ID", nil)
+	}
+
+	var req UpdatePartRequest
+	if err := c.Bind(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_request", "Invalid request body", nil)
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "validation_failed", err.Error(), nil)
+	}
+
+	part, err := h.service.Update(c.Request().Context(), id, req)
+	if err != nil {
+		if errors.Is(err, ErrPartNotFound) {
+			return response.JSONError(c, http.StatusNotFound, "not_found", "Part not found", nil)
+		}
+		return response.JSONError(c, http.StatusInternalServerError, "internal_error", "Failed to update part", nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, part)
+}
+
+func (h *Handler) GetLowStockReport(c echo.Context) error {
+	report, err := h.service.GetLowStockReport(c.Request().Context())
+	if err != nil {
+		return response.JSONError(c, http.StatusInternalServerError, "internal_error", "Failed to get low stock report", nil)
+	}
+	return response.JSONSuccess(c, http.StatusOK, report)
+}
+
+func (h *Handler) BatchRestock(c echo.Context) error {
+	var req BatchReorderRequest
+	if err := c.Bind(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_request", "Invalid request body", nil)
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "validation_failed", err.Error(), nil)
+	}
+
+	claims, _ := c.Get("user").(*auth.JWTClaims)
+	var userID int64 = 1
+	if claims != nil {
+		userID = claims.UserID
+	}
+
+	if err := h.service.BatchRestock(c.Request().Context(), userID, req); err != nil {
+		return response.JSONError(c, http.StatusInternalServerError, "internal_error", "Failed to execute batch restock", nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, map[string]string{"message": "Batch restock completed successfully"})
+}
+
+func (h *Handler) AdjustStock(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid part ID", nil)
+	}
+
+	var req AdjustStockRequest
+	if err := c.Bind(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_request", "Invalid request body", nil)
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "validation_failed", err.Error(), nil)
+	}
+
+	claims, _ := c.Get("user").(*auth.JWTClaims)
+	var userID int64 = 1
+	if claims != nil {
+		userID = claims.UserID
+	}
+
+	part, err := h.service.AdjustStock(c.Request().Context(), id, userID, req)
+	if err != nil {
+		if errors.Is(err, ErrPartNotFound) {
+			return response.JSONError(c, http.StatusNotFound, "not_found", "Part not found", nil)
+		}
+		return response.JSONError(c, http.StatusInternalServerError, "internal_error", "Failed to adjust stock", nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, part)
+}

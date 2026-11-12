@@ -95,9 +95,13 @@ func RegisterRoutes(p RouterParams) {
 	// 5. Inventory routes (parts master & stock)
 	partsGroup := protected.Group("/parts")
 	partsGroup.GET("", p.InventoryHandler.List)
+	partsGroup.GET("/low-stock", p.InventoryHandler.GetLowStockReport)
+	partsGroup.POST("/batch-restock", p.InventoryHandler.BatchRestock, RequireRoles("owner", "advisor"))
 	partsGroup.GET("/:id", p.InventoryHandler.GetByID)
 	partsGroup.POST("", p.InventoryHandler.Create, RequireRoles("owner"))
+	partsGroup.PATCH("/:id", p.InventoryHandler.Update, RequireRoles("owner"))
 	partsGroup.POST("/:id/stock-in", p.InventoryHandler.StockIn, RequireRoles("owner", "advisor"))
+	partsGroup.POST("/:id/adjust", p.InventoryHandler.AdjustStock, RequireRoles("owner"))
 
 	// 6. Job Cards routes
 	jobsGroup := protected.Group("/jobs")

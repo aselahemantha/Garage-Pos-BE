@@ -138,6 +138,200 @@ func (s *Service) Create(ctx context.Context, req CreatePartRequest) (*PartRespo
 	return s.GetByID(ctx, row.ID)
 }
 
+func (s *Service) Update(ctx context.Context, id int64, req UpdatePartRequest) (*PartResponse, error) {
+	_, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	var nameParam, catParam, unitParam pgtype.Text
+	var costParam, sellParam pgtype.Int8
+	var reorderParam pgtype.Numeric
+	var activeParam pgtype.Bool
+
+	if req.Name != nil {
+		nameParam = pgtype.Text{String: strings.TrimSpace(*req.Name), Valid: true}
+	}
+	if req.Category != nil {
+		catParam = pgtype.Text{String: strings.TrimSpace(*req.Category), Valid: true}
+	}
+	if req.Unit != nil {
+		unitParam = pgtype.Text{String: strings.TrimSpace(*req.Unit), Valid: true}
+	}
+	if req.CostPrice != nil {
+		costParam = pgtype.Int8{Int64: *req.CostPrice, Valid: true}
+	}
+	if req.SellPrice != nil {
+		sellParam = pgtype.Int8{Int64: *req.SellPrice, Valid: true}
+	}
+	if req.ReorderLevel != nil {
+		_ = reorderParam.Scan(fmt.Sprintf("%.3f", *req.ReorderLevel))
+	}
+	if req.IsActive != nil {
+		activeParam = pgtype.Bool{Bool: *req.IsActive, Valid: true}
+	}
+
+	_, err = s.queries.UpdatePart(ctx, store.UpdatePartParams{
+		ID:           id,
+		Name:         nameParam,
+		Category:     catParam,
+		Unit:         unitParam,
+		CostPrice:    costParam,
+		SellPrice:    sellParam,
+		ReorderLevel: reorderParam,
+		IsActive:     activeParam,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, id)
+}
+
+func (s *Service) GetLowStockReport(ctx context.Context) (*LowStockSummaryResponse, error) {
+	active := true
+	parts, err := s.List(ctx, "", nil, &active)
+	if err != nil {
+		return nil, err
+	}
+
+	var items []LowStockItem
+	var totalEstimatedCost int64
+	lowCount := 0
+	outCount := 0
+
+	for _, p := range parts {
+		if p.StockOnHand <= p.ReorderLevel {
+			deficit := p.ReorderLevel - p.StockOnHand
+			if deficit < 0 {
+				deficit = 0
+			}
+
+			// Suggested replenishment
+			suggested := (p.ReorderLevel * 2) - p.StockOnHand
+			if suggested < p.ReorderLevel {
+				suggested = p.ReorderLevel
+			}
+			if suggested <= 0 {
+				suggested = 1
+			}
+
+			estCost := int64(suggested * float64(p.CostPrice))
+			totalEstimatedCost += estCost
+
+			if p.StockOnHand <= 0 {
+				outCount++
+			} else {
+				lowCount++
+			}
+
+			items = append(items, LowStockItem{
+				Part:                p,
+				Deficit:             deficit,
+				SuggestedReorderQty: suggested,
+				EstimatedCost:       estCost,
+			})
+		}
+	}
+
+	return &LowStockSummaryResponse{
+		LowStockCount:      lowCount,
+		OutOfStockCount:    outCount,
+		TotalEstimatedCost: totalEstimatedCost,
+		Items:              items,
+	}, nil
+}
+
+func (s *Service) BatchRestock(ctx context.Context, userID int64, req BatchReorderRequest) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	for _, item := range req.Items {
+		qtyNumeric := pgtype.Numeric{}
+		_ = qtyNumeric.Scan(fmt.Sprintf("%.3f", item.Qty))
+
+		note := "Batch Restock"
+		if item.Note != nil && *item.Note != "" {
+			note = *item.Note
+		}
+		if req.SupplierName != nil && *req.SupplierName != "" {
+			note += fmt.Sprintf(" (Supplier: %s)", *req.SupplierName)
+		}
+		if req.InvoiceRef != nil && *req.InvoiceRef != "" {
+			note += fmt.Sprintf(" [Inv: %s]", *req.InvoiceRef)
+		}
+
+		_, err := qtx.AddStockMovement(ctx, store.AddStockMovementParams{
+			PartID:    item.PartID,
+			Qty:       qtyNumeric,
+			Type:      "stock_in",
+			UnitCost:  pgtype.Int8{Int64: item.UnitCost, Valid: true},
+			CreatedBy: pgtype.Int8{Int64: userID, Valid: true},
+			Note:      pgtype.Text{String: note, Valid: true},
+		})
+		if err != nil {
+			return fmt.Errorf("record stock_in for part %d: %w", item.PartID, err)
+		}
+
+		if item.UnitCost > 0 {
+			_, _ = qtx.UpdatePart(ctx, store.UpdatePartParams{
+				ID:        item.PartID,
+				CostPrice: pgtype.Int8{Int64: item.UnitCost, Valid: true},
+			})
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *Service) AdjustStock(ctx context.Context, partID int64, userID int64, req AdjustStockRequest) (*PartResponse, error) {
+	part, err := s.GetByID(ctx, partID)
+	if err != nil {
+		return nil, err
+	}
+
+	diff := req.NewStockOnHand - part.StockOnHand
+	if diff == 0 {
+		return part, nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	qtyNumeric := pgtype.Numeric{}
+	_ = qtyNumeric.Scan(fmt.Sprintf("%.3f", diff))
+
+	note := fmt.Sprintf("Audit adjustment: %.2f -> %.2f (%s)", part.StockOnHand, req.NewStockOnHand, req.Reason)
+
+	_, err = qtx.AddStockMovement(ctx, store.AddStockMovementParams{
+		PartID:    part.ID,
+		Qty:       qtyNumeric,
+		Type:      "adjustment",
+		UnitCost:  pgtype.Int8{Int64: part.CostPrice, Valid: true},
+		CreatedBy: pgtype.Int8{Int64: userID, Valid: true},
+		Note:      pgtype.Text{String: note, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("record adjustment: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, partID)
+}
+
 func (s *Service) StockIn(ctx context.Context, partID int64, userID int64, req StockInRequest) error {
 	part, err := s.GetByID(ctx, partID)
 	if err != nil {
