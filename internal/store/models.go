@@ -20,6 +20,54 @@ type Customer struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type JobCard struct {
+	ID          int64              `json:"id"`
+	JobNo       string             `json:"job_no"`
+	CustomerID  int64              `json:"customer_id"`
+	VehicleID   int64              `json:"vehicle_id"`
+	AdvisorID   int64              `json:"advisor_id"`
+	MileageIn   int32              `json:"mileage_in"`
+	Complaint   pgtype.Text        `json:"complaint"`
+	Notes       pgtype.Text        `json:"notes"`
+	Status      string             `json:"status"`
+	PromisedBy  pgtype.Timestamptz `json:"promised_by"`
+	StartedAt   pgtype.Timestamptz `json:"started_at"`
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	DeliveredAt pgtype.Timestamptz `json:"delivered_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type JobItem struct {
+	ID          int64              `json:"id"`
+	JobCardID   int64              `json:"job_card_id"`
+	ItemType    string             `json:"item_type"`
+	ServiceID   pgtype.Int8        `json:"service_id"`
+	PartID      pgtype.Int8        `json:"part_id"`
+	Description string             `json:"description"`
+	Qty         pgtype.Numeric     `json:"qty"`
+	UnitPrice   int64              `json:"unit_price"`
+	Discount    int64              `json:"discount"`
+	LineTotal   int64              `json:"line_total"`
+	MechanicID  pgtype.Int8        `json:"mechanic_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Part struct {
+	ID           int64              `json:"id"`
+	Sku          string             `json:"sku"`
+	Name         string             `json:"name"`
+	Category     pgtype.Text        `json:"category"`
+	Unit         string             `json:"unit"`
+	CostPrice    int64              `json:"cost_price"`
+	SellPrice    int64              `json:"sell_price"`
+	ReorderLevel pgtype.Numeric     `json:"reorder_level"`
+	IsActive     bool               `json:"is_active"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RefreshToken struct {
 	ID        int64              `json:"id"`
 	UserID    int64              `json:"user_id"`
@@ -53,6 +101,19 @@ type Setting struct {
 	Key       string             `json:"key"`
 	Value     string             `json:"value"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type StockMovement struct {
+	ID        int64              `json:"id"`
+	PartID    int64              `json:"part_id"`
+	Qty       pgtype.Numeric     `json:"qty"`
+	Type      string             `json:"type"`
+	RefType   pgtype.Text        `json:"ref_type"`
+	RefID     pgtype.Int8        `json:"ref_id"`
+	UnitCost  pgtype.Int8        `json:"unit_cost"`
+	Note      pgtype.Text        `json:"note"`
+	CreatedBy pgtype.Int8        `json:"created_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type User struct {

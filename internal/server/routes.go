@@ -8,6 +8,8 @@ import (
 	"garage-pos-be/internal/auth"
 	"garage-pos-be/internal/catalog"
 	"garage-pos-be/internal/customer"
+	"garage-pos-be/internal/inventory"
+	"garage-pos-be/internal/job"
 	"garage-pos-be/internal/pkg/response"
 	"garage-pos-be/internal/settings"
 	"garage-pos-be/internal/vehicle"
@@ -17,14 +19,16 @@ import (
 )
 
 type RouterParams struct {
-	Echo            *echo.Echo
-	Pool            *pgxpool.Pool
-	AuthHandler     *auth.Handler
-	CustomerHandler *customer.Handler
-	VehicleHandler  *vehicle.Handler
-	CatalogHandler  *catalog.Handler
-	SettingsHandler *settings.Handler
-	JWTSecret       string
+	Echo             *echo.Echo
+	Pool             *pgxpool.Pool
+	AuthHandler      *auth.Handler
+	CustomerHandler  *customer.Handler
+	VehicleHandler   *vehicle.Handler
+	CatalogHandler   *catalog.Handler
+	SettingsHandler  *settings.Handler
+	InventoryHandler *inventory.Handler
+	JobHandler       *job.Handler
+	JWTSecret        string
 }
 
 func RegisterRoutes(p RouterParams) {
@@ -82,7 +86,21 @@ func RegisterRoutes(p RouterParams) {
 	svcGroup.POST("", p.CatalogHandler.CreateService, RequireRoles("owner"))
 	svcGroup.PATCH("/:id", p.CatalogHandler.UpdateService, RequireRoles("owner"))
 
-	// 5. Settings routes
+	// 5. Inventory routes (parts master & stock)
+	partsGroup := protected.Group("/parts")
+	partsGroup.GET("", p.InventoryHandler.List)
+	partsGroup.GET("/:id", p.InventoryHandler.GetByID)
+	partsGroup.POST("", p.InventoryHandler.Create, RequireRoles("owner"))
+	partsGroup.POST("/:id/stock-in", p.InventoryHandler.StockIn, RequireRoles("owner", "advisor"))
+
+	// 6. Job Cards routes
+	jobsGroup := protected.Group("/jobs")
+	jobsGroup.GET("/board", p.JobHandler.ListBoard)
+	jobsGroup.POST("", p.JobHandler.Create, RequireRoles("owner", "advisor"))
+	jobsGroup.GET("/:id", p.JobHandler.GetByID)
+	jobsGroup.POST("/:id/status", p.JobHandler.UpdateStatus)
+
+	// 7. Settings routes
 	settingsGroup := protected.Group("/settings")
 	settingsGroup.GET("", p.SettingsHandler.GetAll)
 	settingsGroup.PUT("", p.SettingsHandler.UpdateAll, RequireRoles("owner"))

@@ -6,28 +6,44 @@ package store
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	AddStockMovement(ctx context.Context, arg AddStockMovementParams) (StockMovement, error)
 	CountCustomers(ctx context.Context, dollar_1 string) (int64, error)
 	CountUsers(ctx context.Context) (int64, error)
 	CountVehicles(ctx context.Context, dollar_1 string) (int64, error)
 	CreateCustomer(ctx context.Context, arg CreateCustomerParams) (Customer, error)
+	CreateJobCard(ctx context.Context, arg CreateJobCardParams) (JobCard, error)
+	CreateJobItem(ctx context.Context, arg CreateJobItemParams) (JobItem, error)
+	CreatePart(ctx context.Context, arg CreatePartParams) (Part, error)
 	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
 	CreateService(ctx context.Context, arg CreateServiceParams) (Service, error)
 	CreateServiceCategory(ctx context.Context, arg CreateServiceCategoryParams) (ServiceCategory, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error)
+	DeleteJobItem(ctx context.Context, id int64) error
 	GetAllSettings(ctx context.Context) ([]Setting, error)
 	GetCustomerByID(ctx context.Context, id int64) (Customer, error)
 	GetCustomerByPhone(ctx context.Context, phone string) (Customer, error)
+	GetJobCardByID(ctx context.Context, id int64) (GetJobCardByIDRow, error)
+	GetJobItemByID(ctx context.Context, id int64) (JobItem, error)
+	GetPartByID(ctx context.Context, id int64) (GetPartByIDRow, error)
+	GetPartBySKU(ctx context.Context, sku string) (Part, error)
 	GetRefreshToken(ctx context.Context, tokenHash string) (RefreshToken, error)
 	GetServiceByID(ctx context.Context, id int64) (GetServiceByIDRow, error)
 	GetSetting(ctx context.Context, key string) (Setting, error)
+	GetStockOnHand(ctx context.Context, partID int64) (pgtype.Numeric, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	GetVehicleByID(ctx context.Context, id int64) (Vehicle, error)
 	GetVehicleByPlate(ctx context.Context, plateNo string) (Vehicle, error)
+	ListBoardJobs(ctx context.Context) ([]ListBoardJobsRow, error)
+	ListJobCards(ctx context.Context, arg ListJobCardsParams) ([]ListJobCardsRow, error)
+	ListJobItems(ctx context.Context, jobCardID int64) ([]ListJobItemsRow, error)
+	ListParts(ctx context.Context, arg ListPartsParams) ([]ListPartsRow, error)
 	ListServiceCategories(ctx context.Context) ([]ServiceCategory, error)
 	ListServices(ctx context.Context, arg ListServicesParams) ([]ListServicesRow, error)
 	ListUsers(ctx context.Context) ([]ListUsersRow, error)
@@ -37,6 +53,9 @@ type Querier interface {
 	SearchCustomers(ctx context.Context, arg SearchCustomersParams) ([]Customer, error)
 	SearchVehicles(ctx context.Context, arg SearchVehiclesParams) ([]Vehicle, error)
 	UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) (Customer, error)
+	UpdateJobCard(ctx context.Context, arg UpdateJobCardParams) (JobCard, error)
+	UpdateJobStatus(ctx context.Context, arg UpdateJobStatusParams) (JobCard, error)
+	UpdatePart(ctx context.Context, arg UpdatePartParams) (Part, error)
 	UpdateService(ctx context.Context, arg UpdateServiceParams) (Service, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (UpdateUserRow, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error

@@ -15,6 +15,8 @@ import (
 	"garage-pos-be/internal/catalog"
 	"garage-pos-be/internal/config"
 	"garage-pos-be/internal/customer"
+	"garage-pos-be/internal/inventory"
+	"garage-pos-be/internal/job"
 	"garage-pos-be/internal/pkg/response"
 	"garage-pos-be/internal/server"
 	"garage-pos-be/internal/settings"
@@ -83,9 +85,11 @@ func main() {
 	vehicleService := vehicle.NewService(queries, pool)
 	customerService := customer.NewService(queries, pool, vehicleService)
 	catalogService := catalog.NewService(queries, pool)
+	inventoryService := inventory.NewService(queries, pool)
+	jobService := job.NewService(queries, pool)
 	settingsService := settings.NewService(queries, pool)
 
-	// Seed initial owner account and catalog defaults
+	// Seed initial owner account, catalog defaults, and default inventory parts
 	if err := authService.SeedOwner(ctx); err != nil {
 		slog.Warn("failed to seed initial owner", "error", err)
 	} else {
@@ -96,11 +100,17 @@ func main() {
 		slog.Warn("failed to seed default catalog", "error", err)
 	}
 
+	if err := inventoryService.SeedDefaultParts(ctx); err != nil {
+		slog.Warn("failed to seed default parts", "error", err)
+	}
+
 	// Handlers
 	authHandler := auth.NewHandler(authService, v, cfg.AppEnv == "production")
 	vehicleHandler := vehicle.NewHandler(vehicleService, v)
 	customerHandler := customer.NewHandler(customerService, v)
 	catalogHandler := catalog.NewHandler(catalogService, v)
+	inventoryHandler := inventory.NewHandler(inventoryService, v)
+	jobHandler := job.NewHandler(jobService, v)
 	settingsHandler := settings.NewHandler(settingsService)
 
 	// 4. Initialize HTTP server
@@ -124,14 +134,16 @@ func main() {
 	}))
 
 	server.RegisterRoutes(server.RouterParams{
-		Echo:            e,
-		Pool:            pool,
-		AuthHandler:     authHandler,
-		CustomerHandler: customerHandler,
-		VehicleHandler:  vehicleHandler,
-		CatalogHandler:  catalogHandler,
-		SettingsHandler: settingsHandler,
-		JWTSecret:       cfg.JWTSecret,
+		Echo:             e,
+		Pool:             pool,
+		AuthHandler:      authHandler,
+		CustomerHandler:  customerHandler,
+		VehicleHandler:   vehicleHandler,
+		CatalogHandler:   catalogHandler,
+		InventoryHandler: inventoryHandler,
+		JobHandler:       jobHandler,
+		SettingsHandler:  settingsHandler,
+		JWTSecret:        cfg.JWTSecret,
 	})
 
 	// 5. Graceful shutdown
