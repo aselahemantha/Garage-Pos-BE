@@ -450,25 +450,36 @@ func (s *Service) ApplyDiscount(ctx context.Context, userID int64, userRole stri
 		return nil, errors.New("cannot apply discount to an already settled invoice")
 	}
 
-	var newDiscountTotal int64 = 0
+	var itemDiscountsSum int64
+	if err := s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(discount), 0)::bigint FROM invoice_items WHERE invoice_id = $1`, invoiceID).Scan(&itemDiscountsSum); err != nil {
+		return nil, fmt.Errorf("sum item discounts: %w", err)
+	}
+
+	remainingSubtotal := inv.Subtotal - itemDiscountsSum
+	if remainingSubtotal < 0 {
+		remainingSubtotal = 0
+	}
+
+	var newBillDiscount int64 = 0
 	if req.DiscountAmount != nil {
 		if *req.DiscountAmount < 0 {
 			return nil, errors.New("discount amount cannot be negative")
 		}
-		newDiscountTotal = *req.DiscountAmount
+		newBillDiscount = *req.DiscountAmount
 	} else if req.DiscountPercent != nil {
 		if *req.DiscountPercent < 0 || *req.DiscountPercent > 100 {
 			return nil, errors.New("discount percentage must be between 0 and 100")
 		}
-		newDiscountTotal = int64(math.Round(float64(inv.Subtotal) * (*req.DiscountPercent) / 100.0))
+		newBillDiscount = int64(math.Round(float64(remainingSubtotal) * (*req.DiscountPercent) / 100.0))
 	} else {
 		return nil, errors.New("discount amount or percentage is required")
 	}
 
-	if newDiscountTotal > inv.Subtotal {
-		return nil, errors.New("discount cannot exceed invoice subtotal")
+	if newBillDiscount > remainingSubtotal {
+		return nil, errors.New("bill discount cannot exceed remaining subtotal after item discounts")
 	}
 
+	newDiscountTotal := itemDiscountsSum + newBillDiscount
 	netSubtotal := inv.Subtotal - newDiscountTotal
 	if netSubtotal < 0 {
 		netSubtotal = 0
@@ -507,18 +518,135 @@ func (s *Service) ApplyDiscount(ctx context.Context, userID int64, userRole stri
 
 	_, err = s.pool.Exec(ctx, `
 		UPDATE invoices
-		SET discount_total = $1,
-		    tax_total = $2,
-		    total = $3,
-		    balance = $4,
-		    status = $5,
-		    paid_at = CASE WHEN $6::timestamptz IS NOT NULL THEN $6::timestamptz ELSE paid_at END,
-		    notes = $7,
+		SET bill_discount = $1,
+		    discount_total = $2,
+		    tax_total = $3,
+		    total = $4,
+		    balance = $5,
+		    status = $6,
+		    paid_at = CASE WHEN $7::timestamptz IS NOT NULL THEN $7::timestamptz ELSE paid_at END,
+		    notes = $8,
 		    updated_at = NOW()
-		WHERE id = $8
-	`, newDiscountTotal, taxTotal, newTotal, newBalance, newStatus, paidAtPg, notesPg, invoiceID)
+		WHERE id = $9
+	`, newBillDiscount, newDiscountTotal, taxTotal, newTotal, newBalance, newStatus, paidAtPg, notesPg, invoiceID)
 	if err != nil {
 		return nil, fmt.Errorf("update invoice discount: %w", err)
+	}
+
+	return s.GetInvoice(ctx, invoiceID)
+}
+
+func (s *Service) ApplyItemDiscount(ctx context.Context, userID int64, userRole string, invoiceID int64, itemID int64, req ApplyDiscountRequest) (*InvoiceDetailResponse, error) {
+	if userRole != "owner" && userRole != "advisor" {
+		return nil, ErrUnauthorizedRole
+	}
+
+	inv, err := s.queries.GetInvoiceByID(ctx, invoiceID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrInvoiceNotFound
+		}
+		return nil, err
+	}
+
+	if inv.Status == "void" {
+		return nil, errors.New("cannot apply discount to a void invoice")
+	}
+	if inv.Status == "paid" && inv.Balance <= 0 {
+		return nil, errors.New("cannot apply discount to an already settled invoice")
+	}
+
+	var qty float64
+	var unitPrice int64
+	err = s.pool.QueryRow(ctx, `SELECT qty::float8, unit_price FROM invoice_items WHERE id = $1 AND invoice_id = $2`, itemID, invoiceID).Scan(&qty, &unitPrice)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("invoice item not found")
+		}
+		return nil, fmt.Errorf("fetch invoice item: %w", err)
+	}
+
+	grossLine := int64(math.Round(qty * float64(unitPrice)))
+	var newItemDiscount int64 = 0
+	if req.DiscountAmount != nil {
+		if *req.DiscountAmount < 0 {
+			return nil, errors.New("discount amount cannot be negative")
+		}
+		newItemDiscount = *req.DiscountAmount
+	} else if req.DiscountPercent != nil {
+		if *req.DiscountPercent < 0 || *req.DiscountPercent > 100 {
+			return nil, errors.New("discount percentage must be between 0 and 100")
+		}
+		newItemDiscount = int64(math.Round(float64(grossLine) * (*req.DiscountPercent) / 100.0))
+	} else {
+		return nil, errors.New("discount amount or percentage is required")
+	}
+
+	if newItemDiscount > grossLine {
+		return nil, errors.New("item discount cannot exceed line amount")
+	}
+
+	newLineTotal := grossLine - newItemDiscount
+	_, err = s.pool.Exec(ctx, `UPDATE invoice_items SET discount = $1, line_total = $2 WHERE id = $3 AND invoice_id = $4`, newItemDiscount, newLineTotal, itemID, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("update invoice item discount: %w", err)
+	}
+
+	var itemDiscountsSum int64
+	if err := s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(discount), 0)::bigint FROM invoice_items WHERE invoice_id = $1`, invoiceID).Scan(&itemDiscountsSum); err != nil {
+		return nil, fmt.Errorf("sum item discounts: %w", err)
+	}
+
+	var billDiscount int64
+	if err := s.pool.QueryRow(ctx, `SELECT bill_discount FROM invoices WHERE id = $1`, invoiceID).Scan(&billDiscount); err != nil {
+		return nil, fmt.Errorf("fetch bill discount: %w", err)
+	}
+	if itemDiscountsSum+billDiscount > inv.Subtotal {
+		billDiscount = inv.Subtotal - itemDiscountsSum
+		if billDiscount < 0 {
+			billDiscount = 0
+		}
+	}
+
+	newDiscountTotal := itemDiscountsSum + billDiscount
+	netSubtotal := inv.Subtotal - newDiscountTotal
+	if netSubtotal < 0 {
+		netSubtotal = 0
+	}
+
+	taxTotal := int64(0)
+	if inv.TaxBps > 0 {
+		taxTotal = (netSubtotal*int64(inv.TaxBps) + 5000) / 10000
+	}
+	newTotal := netSubtotal + taxTotal
+	newBalance := newTotal - inv.PaidTotal
+	newStatus := inv.Status
+
+	var paidAtPg pgtype.Timestamptz
+	if newBalance <= 0 {
+		newBalance = 0
+		newStatus = "paid"
+		paidAtPg = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	} else if inv.PaidTotal > 0 {
+		newStatus = "partially_paid"
+	} else {
+		newStatus = "issued"
+	}
+
+	_, err = s.pool.Exec(ctx, `
+		UPDATE invoices
+		SET bill_discount = $1,
+		    discount_total = $2,
+		    tax_total = $3,
+		    total = $4,
+		    balance = $5,
+		    status = $6,
+		    paid_at = CASE WHEN $7::timestamptz IS NOT NULL THEN $7::timestamptz ELSE paid_at END,
+		    updated_at = NOW()
+		WHERE id = $8
+	`, billDiscount, newDiscountTotal, taxTotal, newTotal, newBalance, newStatus, paidAtPg, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("recalculate invoice after item discount: %w", err)
 	}
 
 	return s.GetInvoice(ctx, invoiceID)
@@ -562,6 +690,11 @@ func (s *Service) GetInvoice(ctx context.Context, id int64) (*InvoiceDetailRespo
 		CreatedAt:     inv.CreatedAt.Time.Format(time.RFC3339),
 		Items:         make([]InvoiceItemResponse, 0, len(items)),
 		Payments:      make([]PaymentResponse, 0, len(payments)),
+	}
+
+	var billDiscount int64
+	if err := s.pool.QueryRow(ctx, `SELECT bill_discount FROM invoices WHERE id = $1`, id).Scan(&billDiscount); err == nil {
+		resp.BillDiscount = billDiscount
 	}
 
 	if inv.CustomerAddress.Valid {

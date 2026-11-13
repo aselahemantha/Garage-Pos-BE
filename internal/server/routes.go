@@ -92,6 +92,8 @@ func RegisterRoutes(p RouterParams) {
 	svcGroup.GET("", p.CatalogHandler.ListServices)
 	svcGroup.POST("", p.CatalogHandler.CreateService, RequireRoles("owner"))
 	svcGroup.PATCH("/:id", p.CatalogHandler.UpdateService, RequireRoles("owner"))
+	svcGroup.POST("/:id/vehicle-prices", p.CatalogHandler.UpsertVehiclePrice, RequireRoles("owner"))
+	svcGroup.DELETE("/:id/vehicle-prices/:priceId", p.CatalogHandler.DeleteVehiclePrice, RequireRoles("owner"))
 
 	// 5. Inventory routes (parts master & stock)
 	partsGroup := protected.Group("/parts")
@@ -126,6 +128,7 @@ func RegisterRoutes(p RouterParams) {
 	invGroup.GET("/:id", p.BillingHandler.GetInvoice)
 	invGroup.POST("/:id/payments", p.BillingHandler.RecordPayment, RequireRoles("owner", "advisor"))
 	invGroup.POST("/:id/discount", p.BillingHandler.ApplyDiscount, RequireRoles("owner", "advisor"))
+	invGroup.POST("/:id/items/:itemId/discount", p.BillingHandler.ApplyItemDiscount, RequireRoles("owner", "advisor"))
 	invGroup.POST("/:id/void", p.BillingHandler.VoidInvoice, RequireRoles("owner"))
 
 	// 9. Cash Sessions routes

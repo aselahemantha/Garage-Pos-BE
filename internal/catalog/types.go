@@ -10,17 +10,28 @@ type CategoryResponse struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type ServiceResponse struct {
+type VehiclePriceResponse struct {
 	ID           int64     `json:"id"`
-	CategoryID   int64     `json:"category_id"`
-	CategoryName string    `json:"category_name"`
-	Name         string    `json:"name"`
-	Description  *string   `json:"description,omitempty"`
-	Price        int64     `json:"price"` // minor units (e.g. cents / cents of LKR)
-	EstMinutes   *int32    `json:"est_minutes,omitempty"`
-	IsActive     bool      `json:"is_active"`
+	ServiceID    int64     `json:"service_id"`
+	VehicleMake  string    `json:"vehicle_make"`
+	VehicleModel string    `json:"vehicle_model"`
+	Price        int64     `json:"price"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type ServiceResponse struct {
+	ID            int64                  `json:"id"`
+	CategoryID    int64                  `json:"category_id"`
+	CategoryName  string                 `json:"category_name"`
+	Name          string                 `json:"name"`
+	Description   *string                `json:"description,omitempty"`
+	Price         int64                  `json:"price"` // minor units (e.g. cents / cents of LKR)
+	EstMinutes    *int32                 `json:"est_minutes,omitempty"`
+	IsActive      bool                   `json:"is_active"`
+	VehiclePrices []VehiclePriceResponse `json:"vehicle_prices"`
+	CreatedAt     time.Time              `json:"created_at"`
+	UpdatedAt     time.Time              `json:"updated_at"`
 }
 
 type CreateCategoryRequest struct {
@@ -43,4 +54,10 @@ type UpdateServiceRequest struct {
 	Price       *int64  `json:"price,omitempty" validate:"omitempty,gte=0"`
 	EstMinutes  *int32  `json:"est_minutes,omitempty"`
 	IsActive    *bool   `json:"is_active,omitempty"`
+}
+
+type UpsertVehiclePriceRequest struct {
+	VehicleMake  string `json:"vehicle_make"`
+	VehicleModel string `json:"vehicle_model" validate:"required,min=1"`
+	Price        int64  `json:"price" validate:"gte=0"`
 }

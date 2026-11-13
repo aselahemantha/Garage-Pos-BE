@@ -118,6 +118,7 @@ type InvoiceDetailResponse struct {
 	VehicleColor    *string               `json:"vehicle_color,omitempty"`
 	Status          string                `json:"status"`
 	Subtotal        int64                 `json:"subtotal"`
+	BillDiscount    int64                 `json:"bill_discount"`
 	DiscountTotal   int64                 `json:"discount_total"`
 	TaxBps          int32                 `json:"tax_bps"`
 	TaxTotal        int64                 `json:"tax_total"`

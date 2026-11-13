@@ -111,3 +111,47 @@ func (h *Handler) UpdateService(c echo.Context) error {
 
 	return response.JSONSuccess(c, http.StatusOK, svc)
 }
+
+func (h *Handler) UpsertVehiclePrice(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid service ID", nil)
+	}
+
+	var req UpsertVehiclePriceRequest
+	if err := c.Bind(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_request", "Invalid request body", nil)
+	}
+
+	if err := h.validator.Struct(&req); err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "validation_failed", err.Error(), nil)
+	}
+
+	svc, err := h.service.UpsertVehiclePrice(c.Request().Context(), id, req)
+	if err != nil {
+		if errors.Is(err, ErrServiceNotFound) {
+			return response.JSONError(c, http.StatusNotFound, "not_found", "Service not found", nil)
+		}
+		return response.JSONError(c, http.StatusBadRequest, "upsert_failed", err.Error(), nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, svc)
+}
+
+func (h *Handler) DeleteVehiclePrice(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid service ID", nil)
+	}
+	priceID, err := strconv.ParseInt(c.Param("priceId"), 10, 64)
+	if err != nil {
+		return response.JSONError(c, http.StatusBadRequest, "invalid_id", "Invalid vehicle price ID", nil)
+	}
+
+	svc, err := h.service.DeleteVehiclePrice(c.Request().Context(), id, priceID)
+	if err != nil {
+		return response.JSONError(c, http.StatusNotFound, "delete_failed", err.Error(), nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, svc)
+}
