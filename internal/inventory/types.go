@@ -5,6 +5,7 @@ import "time"
 type PartResponse struct {
 	ID           int64     `json:"id"`
 	SKU          string    `json:"sku"`
+	Barcode      *string   `json:"barcode,omitempty"`
 	Name         string    `json:"name"`
 	Category     *string   `json:"category,omitempty"`
 	Unit         string    `json:"unit"`
@@ -19,6 +20,7 @@ type PartResponse struct {
 
 type CreatePartRequest struct {
 	SKU          string  `json:"sku" validate:"required,min=2"`
+	Barcode      *string `json:"barcode,omitempty"`
 	Name         string  `json:"name" validate:"required,min=2"`
 	Category     *string `json:"category,omitempty"`
 	Unit         string  `json:"unit" validate:"required"` // pcs, litre, set, can
@@ -28,6 +30,7 @@ type CreatePartRequest struct {
 }
 
 type UpdatePartRequest struct {
+	Barcode      *string  `json:"barcode,omitempty"`
 	Name         *string  `json:"name,omitempty" validate:"omitempty,min=2"`
 	Category     *string  `json:"category,omitempty"`
 	Unit         *string  `json:"unit,omitempty"`

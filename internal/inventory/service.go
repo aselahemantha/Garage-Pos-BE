@@ -48,6 +48,19 @@ func (s *Service) List(ctx context.Context, search string, category *string, act
 		return nil, err
 	}
 
+	barcodeMap := make(map[int64]string)
+	bRows, bErr := s.pool.Query(ctx, `SELECT id, barcode FROM parts WHERE barcode IS NOT NULL AND barcode <> ''`)
+	if bErr == nil {
+		defer bRows.Close()
+		for bRows.Next() {
+			var pid int64
+			var bc string
+			if err := bRows.Scan(&pid, &bc); err == nil {
+				barcodeMap[pid] = bc
+			}
+		}
+	}
+
 	res := make([]PartResponse, len(rows))
 	for i, r := range rows {
 		reorderF, _ := r.ReorderLevel.Float64Value()
@@ -68,6 +81,10 @@ func (s *Service) List(ctx context.Context, search string, category *string, act
 		}
 		if r.Category.Valid {
 			res[i].Category = &r.Category.String
+		}
+		if bc, ok := barcodeMap[r.ID]; ok {
+			bcCopy := bc
+			res[i].Barcode = &bcCopy
 		}
 	}
 
@@ -102,6 +119,10 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*PartResponse, error) 
 	if r.Category.Valid {
 		resp.Category = &r.Category.String
 	}
+	var bc pgtype.Text
+	if err := s.pool.QueryRow(ctx, `SELECT barcode FROM parts WHERE id = $1`, id).Scan(&bc); err == nil && bc.Valid && bc.String != "" {
+		resp.Barcode = &bc.String
+	}
 
 	return resp, nil
 }
@@ -133,6 +154,15 @@ func (s *Service) Create(ctx context.Context, req CreatePartRequest) (*PartRespo
 	row, err := s.queries.CreatePart(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("create part: %w", err)
+	}
+
+	if req.Barcode != nil {
+		cleanBC := strings.TrimSpace(*req.Barcode)
+		if cleanBC != "" {
+			if _, err := s.pool.Exec(ctx, `UPDATE parts SET barcode = $1 WHERE id = $2`, cleanBC, row.ID); err != nil {
+				return nil, errors.New("part with this barcode already exists")
+			}
+		}
 	}
 
 	return s.GetByID(ctx, row.ID)
@@ -183,6 +213,19 @@ func (s *Service) Update(ctx context.Context, id int64, req UpdatePartRequest) (
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Barcode != nil {
+		cleanBC := strings.TrimSpace(*req.Barcode)
+		if cleanBC == "" {
+			if _, err := s.pool.Exec(ctx, `UPDATE parts SET barcode = NULL WHERE id = $1`, id); err != nil {
+				return nil, fmt.Errorf("clear barcode: %w", err)
+			}
+		} else {
+			if _, err := s.pool.Exec(ctx, `UPDATE parts SET barcode = $1 WHERE id = $2`, cleanBC, id); err != nil {
+				return nil, errors.New("part with this barcode already exists")
+			}
+		}
 	}
 
 	return s.GetByID(ctx, id)
