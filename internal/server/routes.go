@@ -63,6 +63,9 @@ func RegisterRoutes(p RouterParams) {
 	authGroup.POST("/logout", p.AuthHandler.Logout)
 	authGroup.GET("/me", p.AuthHandler.Me, AuthMiddleware(p.JWTSecret))
 
+	// Public customer job tracking (no auth required)
+	v1.GET("/public/track/:token", p.JobHandler.GetPublicTracking)
+
 	// Protected API group
 	protected := v1.Group("")
 	protected.Use(AuthMiddleware(p.JWTSecret))

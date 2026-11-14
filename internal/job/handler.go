@@ -178,3 +178,16 @@ func (h *Handler) UpdateJob(c echo.Context) error {
 
 	return response.JSONSuccess(c, http.StatusOK, detail)
 }
+
+func (h *Handler) GetPublicTracking(c echo.Context) error {
+	token := c.Param("token")
+	tracking, err := h.service.GetPublicTracking(c.Request().Context(), token)
+	if err != nil {
+		if errors.Is(err, ErrJobNotFound) {
+			return response.JSONError(c, http.StatusNotFound, "not_found", "Tracking link not found or expired", nil)
+		}
+		return response.JSONError(c, http.StatusInternalServerError, "internal_error", "Failed to load job tracking details", nil)
+	}
+
+	return response.JSONSuccess(c, http.StatusOK, tracking)
+}

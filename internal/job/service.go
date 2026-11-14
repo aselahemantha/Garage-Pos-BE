@@ -2,6 +2,8 @@ package job
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -24,6 +26,14 @@ var (
 type Service struct {
 	queries *store.Queries
 	pool    *pgxpool.Pool
+}
+
+func generateTrackingToken() string {
+	b := make([]byte, 10)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }
 
 func NewService(queries *store.Queries, pool *pgxpool.Pool) *Service {
@@ -159,6 +169,9 @@ func (s *Service) Create(ctx context.Context, advisorID int64, req CreateJobCard
 		return nil, err
 	}
 
+	token := generateTrackingToken()
+	_, _ = s.pool.Exec(ctx, `UPDATE job_cards SET tracking_token = $1 WHERE id = $2`, token, cardRow.ID)
+
 	// Re-fetch full details
 	return s.GetByID(ctx, cardRow.ID)
 }
@@ -249,11 +262,146 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*JobDetailResponse, er
 		cardResp.DeliveredAt = &c.DeliveredAt.Time
 	}
 
+	var trackingToken string
+	_ = s.pool.QueryRow(ctx, `SELECT COALESCE(tracking_token, '') FROM job_cards WHERE id = $1`, id).Scan(&trackingToken)
+	if trackingToken == "" {
+		trackingToken = generateTrackingToken()
+		_, _ = s.pool.Exec(ctx, `UPDATE job_cards SET tracking_token = $1 WHERE id = $2`, trackingToken, id)
+	}
+	cardResp.TrackingToken = trackingToken
+
 	return &JobDetailResponse{
 		JobCardResponse: cardResp,
 		Items:           itemResps,
 		TotalMinor:      totalMinor,
 	}, nil
+}
+
+func (s *Service) GetPublicTracking(ctx context.Context, token string) (*PublicTrackingResponse, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, ErrJobNotFound
+	}
+
+	var jobID int64
+	resp := &PublicTrackingResponse{
+		GarageName: "Auto Care Garage",
+		Currency:   "LKR",
+		Items:      make([]PublicTrackingItem, 0),
+	}
+
+	var vehicleYear pgtype.Int4
+	var complaint pgtype.Text
+	var promisedBy, startedAt, completedAt, deliveredAt pgtype.Timestamptz
+
+	err := s.pool.QueryRow(ctx, `
+		SELECT jc.id, jc.job_no, jc.status, jc.mileage_in, jc.complaint,
+		       jc.promised_by, jc.started_at, jc.completed_at, jc.delivered_at,
+		       jc.created_at, jc.updated_at,
+		       v.plate_no, v.make, v.model, v.year,
+		       cu.name
+		FROM job_cards jc
+		JOIN vehicles v ON v.id = jc.vehicle_id
+		JOIN customers cu ON cu.id = jc.customer_id
+		WHERE jc.tracking_token = $1
+	`, token).Scan(
+		&jobID, &resp.JobNo, &resp.Status, &resp.MileageIn, &complaint,
+		&promisedBy, &startedAt, &completedAt, &deliveredAt,
+		&resp.CreatedAt, &resp.UpdatedAt,
+		&resp.PlateNo, &resp.VehicleMake, &resp.VehicleModel, &vehicleYear,
+		&resp.CustomerName,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrJobNotFound
+		}
+		return nil, fmt.Errorf("fetch tracking job: %w", err)
+	}
+
+	if vehicleYear.Valid {
+		resp.VehicleYear = &vehicleYear.Int32
+	}
+	if complaint.Valid {
+		resp.Complaint = &complaint.String
+	}
+	if promisedBy.Valid {
+		resp.PromisedBy = &promisedBy.Time
+	}
+	if startedAt.Valid {
+		resp.StartedAt = &startedAt.Time
+	}
+	if completedAt.Valid {
+		resp.CompletedAt = &completedAt.Time
+	}
+	if deliveredAt.Valid {
+		resp.DeliveredAt = &deliveredAt.Time
+	}
+
+	// Garage profile from settings
+	sRows, err := s.pool.Query(ctx, `SELECT key, value FROM settings`)
+	if err == nil {
+		defer sRows.Close()
+		for sRows.Next() {
+			var k, v string
+			if err := sRows.Scan(&k, &v); err == nil {
+				switch k {
+				case "garage_name":
+					if v != "" {
+						resp.GarageName = v
+					}
+				case "garage_phone":
+					resp.GaragePhone = v
+				case "garage_address":
+					resp.GarageAddress = v
+				case "currency_code":
+					if v != "" {
+						resp.Currency = v
+					}
+				}
+			}
+		}
+	}
+
+	// Job items (parts & services used)
+	iRows, err := s.pool.Query(ctx, `
+		SELECT item_type, description, qty::float8, unit_price, discount, line_total
+		FROM job_items
+		WHERE job_card_id = $1
+		ORDER BY id ASC
+	`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch tracking items: %w", err)
+	}
+	defer iRows.Close()
+
+	var totalMinor int64
+	for iRows.Next() {
+		var it PublicTrackingItem
+		if err := iRows.Scan(&it.ItemType, &it.Description, &it.Qty, &it.UnitPrice, &it.Discount, &it.LineTotal); err != nil {
+			return nil, err
+		}
+		totalMinor += it.LineTotal
+		resp.Items = append(resp.Items, it)
+	}
+	resp.TotalMinor = totalMinor
+
+	// Latest non-void invoice if issued
+	var inv PublicTrackingInvoice
+	err = s.pool.QueryRow(ctx, `
+		SELECT invoice_no, status, subtotal, discount_total, tax_total, total, paid_total, balance
+		FROM invoices
+		WHERE job_card_id = $1 AND status != 'void'
+		ORDER BY id DESC
+		LIMIT 1
+	`, jobID).Scan(
+		&inv.InvoiceNo, &inv.Status, &inv.Subtotal, &inv.DiscountTotal,
+		&inv.TaxTotal, &inv.Total, &inv.PaidTotal, &inv.Balance,
+	)
+	if err == nil {
+		resp.Invoice = &inv
+	}
+
+	return resp, nil
 }
 
 func (s *Service) ListBoard(ctx context.Context) ([]JobCardResponse, error) {

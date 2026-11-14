@@ -36,6 +36,7 @@ type JobCardResponse struct {
 	Complaint     *string    `json:"complaint,omitempty"`
 	Notes         *string    `json:"notes,omitempty"`
 	Status        string     `json:"status"` // pending, in_progress, completed, delivered, cancelled
+	TrackingToken string     `json:"tracking_token"`
 	PromisedBy    *time.Time `json:"promised_by,omitempty"`
 	StartedAt     *time.Time `json:"started_at,omitempty"`
 	CompletedAt   *time.Time `json:"completed_at,omitempty"`
@@ -80,4 +81,49 @@ type UpdateJobCardRequest struct {
 	Complaint  *string `json:"complaint,omitempty"`
 	Notes      *string `json:"notes,omitempty"`
 	PromisedBy *string `json:"promised_by,omitempty"`
+}
+
+type PublicTrackingItem struct {
+	ItemType    string  `json:"item_type"`
+	Description string  `json:"description"`
+	Qty         float64 `json:"qty"`
+	UnitPrice   int64   `json:"unit_price"`
+	Discount    int64   `json:"discount"`
+	LineTotal   int64   `json:"line_total"`
+}
+
+type PublicTrackingInvoice struct {
+	InvoiceNo     string `json:"invoice_no"`
+	Status        string `json:"status"`
+	Subtotal      int64  `json:"subtotal"`
+	DiscountTotal int64  `json:"discount_total"`
+	TaxTotal      int64  `json:"tax_total"`
+	Total         int64  `json:"total"`
+	PaidTotal     int64  `json:"paid_total"`
+	Balance       int64  `json:"balance"`
+}
+
+type PublicTrackingResponse struct {
+	GarageName    string                 `json:"garage_name"`
+	GaragePhone   string                 `json:"garage_phone"`
+	GarageAddress string                 `json:"garage_address"`
+	Currency      string                 `json:"currency"`
+	JobNo         string                 `json:"job_no"`
+	Status        string                 `json:"status"`
+	PlateNo       string                 `json:"plate_no"`
+	VehicleMake   string                 `json:"vehicle_make"`
+	VehicleModel  string                 `json:"vehicle_model"`
+	VehicleYear   *int32                 `json:"vehicle_year,omitempty"`
+	CustomerName  string                 `json:"customer_name"`
+	MileageIn     int32                  `json:"mileage_in"`
+	Complaint     *string                `json:"complaint,omitempty"`
+	PromisedBy    *time.Time             `json:"promised_by,omitempty"`
+	StartedAt     *time.Time             `json:"started_at,omitempty"`
+	CompletedAt   *time.Time             `json:"completed_at,omitempty"`
+	DeliveredAt   *time.Time             `json:"delivered_at,omitempty"`
+	CreatedAt     time.Time              `json:"created_at"`
+	UpdatedAt     time.Time              `json:"updated_at"`
+	Items         []PublicTrackingItem   `json:"items"`
+	TotalMinor    int64                  `json:"total_minor"`
+	Invoice       *PublicTrackingInvoice `json:"invoice,omitempty"`
 }
