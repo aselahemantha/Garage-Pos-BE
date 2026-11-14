@@ -14,18 +14,29 @@ type Config struct {
 	RefreshTokenTTL   time.Duration
 	SeedOwnerUsername string
 	SeedOwnerPassword string
+	CORSOrigins       string
 }
 
 func Load() *Config {
+	httpAddr := os.Getenv("HTTP_ADDR")
+	if httpAddr == "" {
+		if port := os.Getenv("PORT"); port != "" {
+			httpAddr = ":" + port
+		} else {
+			httpAddr = ":8080"
+		}
+	}
+
 	return &Config{
 		AppEnv:            getEnv("APP_ENV", "development"),
-		HTTPAddr:          getEnv("HTTP_ADDR", ":8080"),
+		HTTPAddr:          httpAddr,
 		DatabaseURL:       getEnv("DATABASE_URL", "postgres://garage:garagepassword@localhost:5433/garage?sslmode=disable"),
 		JWTSecret:         getEnv("JWT_SECRET", "garage-super-secret-jwt-key-minimum-32-chars-long"),
 		AccessTokenTTL:    getEnvDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL:   getEnvDuration("REFRESH_TOKEN_TTL", 7*24*time.Hour),
 		SeedOwnerUsername: getEnv("SEED_OWNER_USERNAME", "owner"),
 		SeedOwnerPassword: getEnv("SEED_OWNER_PASSWORD", "admin123"),
+		CORSOrigins:       getEnv("CORS_ALLOW_ORIGINS", ""),
 	}
 }
 

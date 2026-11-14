@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -136,8 +137,17 @@ func main() {
 			`"method":"${method}","uri":"${uri}","status":${status},"latency_ms":${latency}}` + "\n",
 	}))
 	e.Use(middleware.BodyLimit("1M"))
+	allowOrigins := []string{"http://localhost:5173", "http://127.0.0.1:5173"}
+	if cfg.CORSOrigins != "" {
+		for _, o := range strings.Split(cfg.CORSOrigins, ",") {
+			if trimmed := strings.TrimSpace(o); trimmed != "" {
+				allowOrigins = append(allowOrigins, trimmed)
+			}
+		}
+	}
+
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:     []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodPut, http.MethodOptions},
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 		AllowCredentials: true,
